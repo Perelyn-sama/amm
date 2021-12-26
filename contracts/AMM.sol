@@ -83,5 +83,84 @@ contract AMM {
     function getEquivalentToken2Estimate(uint256 _amountToken1) public view activePool returns(uint256 reqToken2) {
     reqToken2 = totalToken2.mul(_amountToken1).div(totalToken1);
     }
+
+    // Returns the estimate of Token1 & Token2 that will be released on burning given _share
+    function getWithdrawEstimate(uint256 _share) public view activePool returns(uint256 amountToken1, uint256 amountToken2){
+        require(_share <= totalShares, "Share should be less than totalShare");
+        amountToken1 = _share.mul(totalToken1).div(totalShares);
+        amountToken2 = _share.mul(totalToken2).div(totalShares);
+    }
+
+    // Removes liquidity from the pool and releases corresponding Token1 & Token2 to the withdrawer 
+    function withdraw(uint256 _share) external activePool validAmountCheck(shares, _share) returns(uint256 amountToken1, uint256 amountToken2){
+       (amountToken1, amountToken2) = getWithdrawEstimate(_share);
+
+       shares[msg.sender] -= _share;
+       totalShares -= _share;
+
+       totalToken1 -= amountToken1;
+       totalToken2 -= amountToken2;
+       K = totalToken1.mul(totalToken2);
+
+       token1Balance[msg.sender] += amountToken1;
+       token2Balance[msg.sender] += amountToken2;
+    }
+
+    // Returns the amount of Token2 that the user will get when swapping a given amount of Token1 for Token2
+    function getSwapToken1Estimate(uint256 _amountToken1) public view activePool returns(uint256 amountToken2){
+        uint256 token1After = totalToken1.add(_amountToken1);
+        uint256 token2After = K.div(token1After);
+        amountToken2 = totalToken2.sub(token2After);
+
+        // To ensure that Token2's pool is not completely depleted leading to inf:0 ratio
+        if(amountToken2 == totalToken2) amountToken2--;
+    }
+
+    // Returns the amount of Token1 that the user should swap to get _amountToken2 in return 
+    function getSwapTokenEstimateGivenToken2(uint256 _amountToken2) public view activePool returns(uint256 amountToken1){
+        require(_amountToken2 < totalToken2,"Insufficient pool balance");
+        uint256 token2After = totalToken2.sub(_amountToken2);
+        uint256 token1After = K.div(token2After);
+        amountToken1 = token1After.sub(totalToken1);
+    }
+
+    // Swaps given amount of Token1 to Token2 using algorithmic price determination 
+    function swapToken1(uint256 _amountToken1) external activePool validAmountCheck(token1Balance, _amountToken1) returns(uint256 amountToken2){
+        amountToken2 = getSwapToken1Estimate(_amountToken1);
+
+        token1Balance[msg.sender] -= _amountToken1;
+        totalToken1 += _amountToken1;
+        totalToken2 -= amountToken2;
+        token2Balance[msg.sender] += amountToken2;
+
+    }
+
+    // Returns the amount of Token2 that the user will get when swapping a given amount of Token1 for Token2
+function getSwapToken2Estimate(uint256 _amountToken2) public view activePool returns(uint256 amountToken1) {
+    uint256 token2After = totalToken2.add(_amountToken2);
+    uint256 token1After = K.div(token2After);
+    amountToken1 = totalToken1.sub(token1After);
+
+    // To ensure that Token1's pool is not completely depleted leading to inf:0 ratio
+    if(amountToken1 == totalToken1) amountToken1--;
+    }
+
+    // Returns the amount of Token2 that the user should swap to get _amountToken1 in return
+    function getSwapToken2EstimateGivenToken1(uint256 _amountToken1) public view activePool returns(uint256 amountToken2) {
+    require(_amountToken1 < totalToken1, "Insufficient pool balance");
+    uint256 token1After = totalToken1.sub(_amountToken1);
+    uint256 token2After = K.div(token1After);
+    amountToken2 = token2After.sub(totalToken2);
+    }
+
+    // Swaps given amount of Token2 to Token1 using algorithmic price determination
+    function swapToken2(uint256 _amountToken2) external activePool validAmountCheck(token2Balance, _amountToken2) returns(uint256 amountToken1) {
+    amountToken1 = getSwapToken2Estimate(_amountToken2);
+
+    token2Balance[msg.sender] -= _amountToken2;
+    totalToken2 += _amountToken2;
+    totalToken1 -= amountToken1;
+    token1Balance[msg.sender] += amountToken1;
+    }
 }
 
